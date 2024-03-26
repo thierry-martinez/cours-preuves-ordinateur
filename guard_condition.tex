@@ -1,0 +1,597 @@
+\documentclass{beamer}
+\usepackage{fontspec,minted}
+\usepackage[francais]{babel}
+\newtheorem{theoreme}{Théorème}
+\begin{document}
+\begin{frame}
+  \title{Récurseurs et condition de garde}
+  \author{Thierry Martinez}
+  \date{vendredi 22 mars 2024}
+  \maketitle
+\end{frame}
+\begin{frame}[fragile]
+  \frametitle{Comment écrire des programmes sur des structures inductives ?}
+
+\begin{minted}{coq}
+Inductive nat :=
+| O : nat
+| S : nat -> nat.
+\end{minted}
+
+\vfill
+
+De cette définition, Coq dérive quatre principe d'inductions :
+\mintinline{coq}{nat_rect},
+\mintinline{coq}{nat_ind},
+\mintinline{coq}{nat_rec},
+\mintinline{coq}{nat_sind}.
+
+\vfill
+
+et permet de définir des fonctions récursives par point fixe :
+
+\begin{minted}{coq}
+Fixpoint add (m n : nat) : nat :=
+  match m with
+  | O => n
+  | S m' => S (add m' n)
+  end.
+\end{minted}
+
+définition à laquelle Coq répond
+
+\texttt{add is recursively defined (guarded on 1st argument)}
+
+Quel est le lien entre tout ça, et comment la terminaison est-elle garantie ?
+
+\end{frame}
+\begin{frame}[fragile]
+  \frametitle{Le récurseur \mintinline{coq}{nat_rec}}
+
+\begin{minted}{coq}
+Print nat_rec.
+nat_rec =
+fun P : nat -> Set => nat_rect P
+     : forall P : nat -> Set,
+       P O -> (forall n : nat, P n -> P (S n)) ->
+       forall n : nat, P n
+\end{minted}
+
+\vfill
+
+Paraphrasons : pour toute famille de type indexée \((\mintinline{coq}{P n})_n\),
+\begin{itemize}
+\item étant donné un élément de type \(P_0\) (cas de base) et
+\item étant donnée une fonction qui calcule à partir d’un élément de type \(P_n\) un élément de type \(P_{S(n)}\),
+\end{itemize}
+alors on en déduit une fonction qui calcule pour tout entier \(n\), un élément \(P_n\).
+
+\vfill
+
+Application : \mintinline{coq}{add} peut être défini par récurseur, en prenant \(\forall \mintinline{coq}{n}, \mintinline{coq}{P n} = \mintinline{coq}{nat}\).
+
+\begin{minted}{coq}
+Definition add' (m n : nat) :=
+  nat_rec (fun _ => nat) n (fun _ acc => S acc) m.
+\end{minted}
+\end{frame}
+\begin{frame}[fragile]
+  \frametitle{Utilisation de \mintinline{coq}{nat_rec} avec un type dépendant}
+
+\begin{minted}{coq}
+Inductive vect (A : Set) : nat -> Set :=
+| nil : vect A O
+| cons : forall n, A -> vect A n -> vect A (S n).
+
+Fixpoint fill (A : Set) (x : A) (n : nat) : vect A n :=
+  match n with
+  | O => nil A
+  | S n' => cons A n' x (fill A x n')
+  end.
+\end{minted}
+
+Définition de \mintinline{coq}{fill} avec \mintinline{coq}{nat_rec} ?
+
+\pause
+
+\begin{minted}{coq}
+Definition fill' (A: Set) (x: A) (n: nat) : vect A n :=
+  nat_rec (fun n => vect A n) (nil A)
+    (fun n' acc => cons A n' x acc) n.
+\end{minted}
+\end{frame}
+\begin{frame}[fragile]
+  \frametitle{Définition de \mintinline{coq}{nat_rec} par point fixe}
+
+\begin{minted}{coq}
+Fixpoint nat_rec' (P : nat -> Set) (P0 : P O)
+  (PH : forall n, P n -> P (S n)) (n : nat) : P n :=
+\end{minted}
+\pause
+\begin{minted}{coq}
+  match n with
+  | O => P0
+  | S n' => PH n' (nat_rec' P P0 PH n')
+  end.
+\end{minted}
+\end{frame}
+\begin{frame}[fragile]
+  \frametitle{\mintinline{coq}{match} plus économe que \mintinline{coq}{nat_rec}}
+
+\begin{minted}{coq}
+Definition pred (n : nat) : nat :=
+  match n with
+  | O => O
+  | S n' => n'
+  end.
+\end{minted}
+\vfill
+Définition de \mintinline{coq}{pred} avec \mintinline{coq}{nat_rec} ?
+\begin{minted}{coq}
+Definition pred' (n : nat) : nat :=
+\end{minted}
+\pause
+\begin{minted}{coq}
+  fst (nat_rec (fun _ => nat) O
+    (fun _ n' => n') n).
+\end{minted}
+
+\end{frame}
+\begin{frame}[fragile]
+  \frametitle{\mintinline{coq}{match} sur deux structures en parallèle}
+
+\begin{minted}{coq}
+Fixpoint sub (m n : nat) : nat :=
+  match m, n with
+  | O, _ => O
+  | _, O => m
+  | S m', S n' => sub m' n'
+  end.
+\end{minted}
+\vfill
+Définition de \mintinline{coq}{sub} avec \mintinline{coq}{nat_rec} ?
+\begin{minted}{coq}
+Definition sub' (m n : nat) : nat :=
+\end{minted}
+\pause
+\begin{minted}{coq}
+  nat_rec (fun _ => nat) m (fun _ acc => pred acc) n.
+\end{minted}
+\vfill
+Complexité de \mintinline{coq}{sub'} : \(\mathbf O(\mintinline{coq}{m} \times \mintinline{coq}{n})\) !
+\end{frame}
+
+\begin{frame}[fragile]
+  \frametitle{Le récurseur \mintinline{coq}{vect_rec}}
+
+\begin{minted}{coq}
+Inductive vect (A : Set) : nat -> Set :=
+| nil : vect A O
+| cons : forall n, A -> vect A n -> vect A (S n).
+\end{minted}
+
+\begin{minted}{coq}
+Print vect_rec.
+vect_rec =
+fun (A : Set) (P : forall n : nat, vect A n -> Set) =>
+  vect_rect A P
+: forall (A : Set) (P : forall n : nat, vect A n -> Set),
+  P O (nil A) ->
+  (forall (n : nat) (a : A) (v : vect A n),
+   P n v -> P (S n) (cons A n a v)) ->
+  forall (n : nat) (v : vect A n), P n v
+\end{minted}
+\end{frame}
+
+\begin{frame}[fragile]
+  \frametitle{\mintinline{coq}{map} pour \mintinline{coq}{vect}}
+
+\begin{minted}{coq}
+Fixpoint map (A B : Set) (n : nat) (f : A -> B)
+  (v : vect A n) : vect B n :=
+\end{minted}
+\pause
+\begin{minted}{coq}
+  match v with
+  | nil _ => nil B
+  | cons _ n' hd tl => cons B n' (f hd) (map A B n' f tl)
+  end.
+\end{minted}
+\vfill
+Définition de \mintinline{coq}{map} avec \mintinline{coq}{vect_rec} ?
+\begin{minted}{coq}
+Definition map' (A B : Set) (n : nat) (f : A -> B)
+  (v : vect A n) : vect B n :=
+\end{minted}
+\pause
+\begin{minted}{coq}
+  vect_rec A (fun n' _ => vect B n')
+    (nil B)
+    (fun n' hd _ acc => cons B n' (f hd) acc) n v.
+\end{minted}
+\end{frame}
+
+\begin{frame}[fragile]
+  \frametitle{Le récurseur \mintinline{coq}{tree_rec}}
+
+\begin{minted}{coq}
+Inductive tree (A : Set) :=
+| leaf
+| node (lhs : tree A) (label : A) (rhs : tree A).
+\end{minted}
+
+\begin{minted}{coq}
+Print tree_rec.
+\end{minted}
+\pause
+\begin{minted}{coq}
+tree_rec =
+fun (A : Set) (P : tree A -> Set) => tree_rect A P
+     : forall (A : Set) (P : tree A -> Set),
+       P (leaf A) ->
+       (forall lhs : tree A,
+        P lhs ->
+        forall (label : A)
+        (rhs : tree A), P rhs ->
+        P (node A lhs label rhs)) ->
+       forall t : tree A, P t
+\end{minted}
+\end{frame}
+
+\begin{frame}[fragile]
+  \frametitle{\mintinline{coq}{height} pour \mintinline{coq}{tree}}
+
+\begin{minted}{coq}
+Fixpoint height (A : Set) (t : tree A) : nat :=
+  match t with
+  | leaf _ => O
+  | node  _ lhs _ rhs =>
+      S (max (height A lhs) (height A rhs))
+  end.
+\end{minted}
+\vfill
+Définition de \mintinline{coq}{height} avec \mintinline{coq}{tree_rec} ?
+\begin{minted}{coq}
+Definition height' (A : Set) (t : tree A) : nat :=
+\end{minted}
+\pause
+\begin{minted}{coq}
+  tree_rec A (fun _ => nat) O
+    (fun _ hl _ _ hr => S (max hl hr)) t.
+\end{minted}
+\end{frame}
+
+\begin{frame}[fragile]
+  \frametitle{Condition de garde : un argument décroit strictement}
+
+\begin{minted}{coq}
+Fixpoint height (A : Set) (t : tree A) {struct t}: nat :=
+  match t with
+  | leaf _ => O
+  | node  _ lhs _ rhs =>
+      S (max (height A lhs) (height A rhs))
+  end.
+\end{minted}
+
+\mintinline{coq}{lhs} et \mintinline{coq}{rhs} sont obtenus par filtrage de
+\mintinline{coq}{t} à travers le constructeur \mintinline{coq}{node}
+\textbf{en position récursive} (\mintinline{coq}{tree} apparaît en argument
+du constructeur) :
+
+\begin{minted}{coq}
+Inductive tree (A : Set) :=
+| leaf
+| node (lhs : tree A) (label : A) (rhs : tree A).
+\end{minted}
+
+ceci garantit \(\mintinline{coq}{lhs} < \mintinline{coq}{t}\)
+et \(\mintinline{coq}{rhs} < \mintinline{coq}{t}\)
+pour l'ordre structurel.
+\end{frame}
+\begin{frame}[fragile]
+  \frametitle{Condition de garde : stabilité par application (et abstraction)}
+
+\begin{minted}{coq}
+Inductive tree' (A : Set) :=
+| leaf'
+| node' (label : A) (children : bool -> tree' A).
+
+Print tree'_rec.
+
+Fixpoint height' (A : Set) (t : tree' A) : nat :=
+  match t with
+  | leaf' _ => O
+  | node'  _ _ children =>
+      S (max (height' A (children false))
+           (height' A (children true)))
+  end.
+\end{minted}
+
+si \(\mintinline{coq}{u} < \mintinline{coq}{t}\) alors
+\(\mintinline{coq}{u e} < \mintinline{coq}{t}\)
+(on a aussi \(\mintinline{coq}{fun x => u} < \mintinline{coq}{t}\)).
+
+\end{frame}
+\begin{frame}[fragile]
+  \frametitle{Condition de garde : seuls les sous-termes en position récursive sont pris en compte}
+
+  Par imprédicativité, on peut avoir des sous-termes aussi grands que le terme lui-même.
+
+\begin{minted}{coq}
+Inductive I : Prop := C (f: forall A:Prop, A->A).
+Fail Fixpoint F (x:I) : False :=
+  match x with
+  | C f => F (f I x)
+  end.
+\end{minted}
+\end{frame}
+\begin{frame}[fragile]
+  \frametitle{Condition de garde : stabilité par filtrage}
+
+\begin{minted}{coq}
+Inductive direction := Left | Right.
+
+Fixpoint path_height (t : tree direction) : nat :=
+  match t with
+  | leaf _ => O
+  | node _ lhs label rhs =>
+      S (path_height
+           (match label with
+            | Left => lhs
+            | Right => rhs
+            end))
+  end.
+\end{minted}
+
+Si toutes les branches sont telles que \(\mintinline{coq}{b} < \mintinline{coq}{t}\) alors
+ \(\mintinline{coq}{match _ with _ => b end} < \mintinline{coq}{t}\).
+\end{frame}
+\begin{frame}[fragile]
+  \frametitle{Terminaison et condition de garde}
+
+  \vfill
+  
+  \begin{theoreme}
+    Pour toute définition par point fixe qui vérifie la condition de garde,
+    il existe une définition par récurseur qui lui est extentionnellement équivalente.
+  \end{theoreme}
+
+  \vfill
+
+  Eduarde Giménez, Codifying guarded definitions with recursive schemes,
+  TYPES 1994: Types for Proofs and Programs
+
+  \vfill
+\end{frame}
+\begin{frame}[fragile]
+  \frametitle{Récurseurs pour les inductifs dans \mintinline{coq}{Prop}}
+
+  Un terme de \mintinline{coq}{Prop} ne peut être éliminé dans
+  \mintinline{coq}{Set} : pas de récurseur \mintinline{coq}{rec} (ni
+  \mintinline{coq}{rect} a fortiori), on a seulement
+  \mintinline{coq}{ind} (élimination dans \mintinline{coq}{Prop})
+  et \mintinline{coq}{sind} (élimination dans \mintinline{coq}{SProp}).
+
+
+  D'autre part, les termes récursifs ne portent pas d'information
+  (\emph{proof irrelevance}) : ils ne sont pas passés en argument
+  du prédicat d'élimination.
+
+\begin{minted}{coq}
+Inductive even : nat -> Prop :=
+| even_0: even O
+| even_SS: forall n, even n -> even (S (S n)).
+Print even_ind.
+even_ind =
+fun (P : nat -> Prop) (f : P O)
+  (f0 : forall n : nat, even n -> P n -> P (S (S n))) =>
+[...] : forall P : nat -> Prop,
+       P O ->
+       (forall n : nat, even n -> P n -> P (S (S n))) ->
+       forall n : nat, even n -> P n
+\end{minted}
+\end{frame}
+
+\begin{frame}[fragile]
+  \frametitle{Exemple d'inductif dans \mintinline{coq}{Prop} : l'égalité}
+\begin{minted}{coq}
+Inductive eq (A : Type) (x : A) : A -> Prop :=
+| eq_refl : eq x x.
+
+Print eq_ind.
+\end{minted}
+\pause
+\begin{minted}{coq}
+eq_ind =
+fun (A : Type) (x : A) (P : A -> Prop) (f : P x) (a : A)
+  (e : eq x a) =>
+match e in eq _ a0 return P a0 with
+| eq_refl => f
+end
+     : forall (A : Type) (x : A) (P : A -> Prop),
+       P x -> forall a : A, eq x a -> P a
+\end{minted}
+\end{frame}
+
+\begin{frame}[fragile]
+  \frametitle{Exemple d'élimination dans \mintinline{coq}{Prop}}
+\begin{minted}{coq}
+Fixpoint add_r (n : nat) : add n O = n :=
+  match n with
+  | O => eq_refl
+  | S n' =>
+\end{minted}
+\pause
+\begin{minted}{coq}
+      match add_r n' in _ = m
+      return add (S n') O = S m with
+      | eq_refl => eq_refl
+      end
+  end.
+\end{minted}
+
+Définition avec \mintinline{coq}{nat_ind} et \mintinline{coq}{eq_ind} ?
+\pause
+\begin{minted}{coq}
+Definition add_r' (n : nat) : add n O = n :=
+  nat_ind (fun n' => add n' O = n') eq_refl
+    (fun n' IH =>
+      eq_ind (add n' O) (fun m => add (S n') O = S m)
+        eq_refl n' IH) n.
+\end{minted}
+\end{frame}
+
+\begin{frame}[fragile]
+  \frametitle{Ordres bien fondés}
+
+\begin{minted}{coq}
+Import Wf.
+
+Print Acc.
+Inductive Acc (A : Type) (R : A -> A -> Prop)
+    (x : A) : Prop :=
+    Acc_intro :
+    (forall y : A, R y x -> Acc R y) -> Acc R x.
+
+Print well_founded.
+well_founded =
+fun (A : Type) (R : A -> A -> Prop) =>
+     forall a : A, Acc R a
+     : forall A : Type, (A -> A -> Prop) -> Prop
+\end{minted}
+\end{frame}
+
+\begin{frame}[fragile]
+  \frametitle{Induction bien fondées}
+
+\begin{minted}{coq}
+Check well_founded_induction.
+well_founded_induction
+     : forall (A : Type) (R : A -> A -> Prop),
+       well_founded R ->
+       forall P : A -> Set,
+       (forall x : A,
+         (forall y : A, R y x -> P y) -> P x) ->
+       forall a : A, P a
+\end{minted}
+\end{frame}
+
+\begin{frame}[fragile]
+  \frametitle{\mintinline{coq}{lt} est bien fondé}
+
+\begin{minted}{coq}
+Require Import PeanoNat.
+
+Theorem lt_wf: well_founded lt.
+Proof.
+\end{minted}
+\pause
+\begin{minted}{coq}
+  assert (H : forall n m, m < n -> Acc lt m).
+  { intro n. induction n as [|n IHn].
+    - apply Acc_intro. intros y y_lt_0. inversion y_lt_0.
+    - intros m n_lt_Sn. apply Acc_intro. intros y y_lt_m.
+      apply IHn. apply Nat.lt_le_trans with m.
+      + apply y_lt_m.
+      + apply Nat.succ_le_mono. apply n_lt_Sn. }
+  intro m. apply H with (S m). apply le_n.
+Qed.
+\end{minted}
+
+Démonstration dans la bibliothèque standard : \mintinline{coq}{Wf_nat.lt_wf}
+\end{frame}
+
+\begin{frame}[fragile]
+  \frametitle{Induction bien fondée sur \mintinline{coq}{lt}}
+
+\begin{minted}{coq}
+Require Import Compare_dec.
+Import Wf.
+Check zerop.
+zerop : forall n : nat, {n = 0} + {0 < n}
+Check Nat.lt_div2.
+Nat.lt_div2 : forall n : nat, 0 < n -> Nat.div2 n < n
+
+Definition log2_rec (n : nat)
+  (IH : forall m, m < n -> nat) :=
+\end{minted}
+\pause
+\begin{minted}{coq}
+  match zerop n with
+  | left n_eq_O => O
+  | right O_lt_n =>
+    S (IH (Nat.div2 n) (Nat.lt_div2 n O_lt_n))
+  end.
+
+Definition log2 (n : nat) :=
+\end{minted}
+\pause
+\begin{minted}{coq}
+  well_founded_induction lt_wf (fun _ => nat) log2_rec n.
+\end{minted}
+\end{frame}
+
+\begin{frame}[fragile]
+  \frametitle{Élimination des cas impossibles : filtrage sur les index}
+
+\begin{minted}{coq}
+Definition tail A n (v : vect A (S n)) : vect A n :=
+\end{minted}
+\pause
+\begin{minted}{coq}
+  match v in vect _ m return
+        match m with
+        | O => unit
+        | S n' => vect A n'
+        end
+  with
+  | nil _ => tt
+  | cons _ _n _hd tl => tl
+  end.
+\end{minted}
+
+Remarque : dans les cas simples, Coq élabore automatiquement le filtrage sur les cas impossibles
+
+\begin{minted}{coq}
+Definition tail A n (v : vect A (S n)) : vect A n :=
+  match v with
+  | cons _ _n _hd tl => tl
+  end.
+\end{minted}
+\end{frame}
+
+\begin{frame}[fragile]
+  \frametitle{Filtrage dépendant: utilisation des coupures commutatives}
+
+\begin{minted}{coq}
+Fixpoint map2 (A B C: Set) (f: A->B->C) n (u: vect A n)
+  (v: vect B n): vect C n := 
+\end{minted}
+\pause
+\begin{minted}{coq}
+  match u in vect _ m return vect B m -> vect C m with
+  | nil _ => fun _ => nil _
+  | cons _ m' uh ut => fun (v' : vect B (S m')) =>
+      match v' in vect _ m' return
+        match m' with
+        | O => unit
+        | S m'' => vect A m'' -> vect C m'
+        end with
+      | nil _ => tt
+      | cons _ m' vh vt => fun (ut' : vect A m') =>
+          cons _ m' (f uh vh) (map2 A B C f m' ut' vt)
+      end ut
+  end v.
+\end{minted}
+
+La condition de garde est généralisée pour passer à travers les
+coupures commutatives.
+\end{frame}
+\end{document}
+
+%%% Local Variables:
+%%% coding: utf-8
+%%% mode: latex
+%%% TeX-engine: luatex
+%%% TeX-command-extra-options: "-shell-escape"
+%%% End:
